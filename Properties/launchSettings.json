@@ -1,0 +1,15 @@
+{
+  "profiles": {
+    "Mac Catalyst": {
+      "commandName": "Project",
+      "nativeDebugging": false,
+      "environmentVariables": {
+        "DEVELOPER_DIR": "/Applications/Xcode.app/Contents/Developer"
+      }
+    },
+    "Windows Machine": {
+      "commandName": "Project",
+      "nativeDebugging": false
+    }
+  }
+}

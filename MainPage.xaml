@@ -1,0 +1,172 @@
+﻿<?xml version="1.0" encoding="utf-8" ?>
+<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+             x:Class="IdpDemo.MainPage"
+             Title="Welcome"
+             BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}">
+
+    <ScrollView>
+        <Grid Padding="40">
+            <Border MaximumWidthRequest="1360"
+                    HorizontalOptions="Center"
+                    VerticalOptions="Start"
+                    BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource OffBlack}}"
+                    Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                    StrokeShape="RoundRectangle 28"
+                    Padding="40">
+                <VerticalStackLayout Spacing="28">
+                    <Label Text="IdpDemo"
+                           FontFamily="OpenSansSemibold"
+                           FontSize="20"
+                           TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray300}}" />
+
+                    <VerticalStackLayout Spacing="12">
+                        <Label Text="Welcome"
+                               FontFamily="OpenSansSemibold"
+                               FontSize="48"
+                               SemanticProperties.HeadingLevel="Level1"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource White}}" />
+
+                        <Label Text="Sign in to review the authenticated user and current activation details."
+                               FontSize="22"
+                               LineHeight="1.35"
+                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+                    </VerticalStackLayout>
+
+                    <VerticalStackLayout Spacing="12">
+                        <Button x:Name="LoginButton"
+                                Text="Login"
+                                Clicked="OnLoginClicked"
+                                HorizontalOptions="Fill"
+                                HeightRequest="64"
+                                FontSize="20"
+                                SemanticProperties.Hint="Opens the login flow" />
+
+                        <ActivityIndicator x:Name="LoginActivityIndicator"
+                                           IsVisible="False"
+                                           IsRunning="False"
+                                           HorizontalOptions="Center" />
+                    </VerticalStackLayout>
+
+                    <Grid ColumnDefinitions="*,*"
+                          ColumnSpacing="24">
+                        <Border x:Name="IdentitySummaryCard"
+                                Grid.Column="0"
+                                IsVisible="False"
+                                MinimumHeightRequest="420"
+                                Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                                StrokeShape="RoundRectangle 22"
+                                Padding="24"
+                                BackgroundColor="{AppThemeBinding Light=#F8FAFC, Dark=#111827}">
+                            <VerticalStackLayout Spacing="18">
+                                <Label Text="Authenticated User"
+                                       FontFamily="OpenSansSemibold"
+                                       FontSize="24"
+                                       TextColor="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource White}}" />
+
+                                <ScrollView>
+                                    <VerticalStackLayout Spacing="14">
+                                        <Label x:Name="UserNameLabel"
+                                               FontSize="18"
+                                               LineHeight="1.35"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+
+                                        <Label x:Name="UserEmailLabel"
+                                               FontSize="18"
+                                               LineHeight="1.35"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+
+                                        <Label x:Name="UserSubjectLabel"
+                                               FontSize="18"
+                                               LineHeight="1.35"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+
+                                        <Label x:Name="UserIssuerLabel"
+                                               FontSize="18"
+                                               LineHeight="1.35"
+                                               LineBreakMode="WordWrap"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+
+                                        <Label x:Name="EntitlementGroupLabel"
+                                               FontSize="18"
+                                               LineHeight="1.35"
+                                               LineBreakMode="WordWrap"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+
+                                        <Label x:Name="RolesLabel"
+                                               FontSize="18"
+                                               LineHeight="1.35"
+                                               LineBreakMode="WordWrap"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+
+                                        <Label Text="Access Token"
+                                               FontFamily="OpenSansSemibold"
+                                               FontSize="18"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource White}}" />
+
+                                        <Editor x:Name="AccessTokenEditor"
+                                                IsReadOnly="True"
+                                                AutoSize="Disabled"
+                                                HeightRequest="96"
+                                                FontSize="13"
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource White}}"
+                                                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
+
+                                        <Button x:Name="CopyAccessTokenButton"
+                                                Text="Copy Access Token"
+                                                Clicked="OnCopyAccessTokenClicked"
+                                                HorizontalOptions="Fill" />
+
+                                        <Label Text="ID Token"
+                                               FontFamily="OpenSansSemibold"
+                                               FontSize="18"
+                                               TextColor="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource White}}" />
+
+                                        <Editor x:Name="IdTokenEditor"
+                                                IsReadOnly="True"
+                                                AutoSize="Disabled"
+                                                HeightRequest="96"
+                                                FontSize="13"
+                                                TextColor="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource White}}"
+                                                BackgroundColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray950}}" />
+
+                                        <Button x:Name="CopyIdTokenButton"
+                                                Text="Copy ID Token"
+                                                Clicked="OnCopyIdTokenClicked"
+                                                HorizontalOptions="Fill" />
+                                    </VerticalStackLayout>
+                                </ScrollView>
+                            </VerticalStackLayout>
+                        </Border>
+
+                        <Border x:Name="ActivationSummaryCard"
+                                Grid.Column="0"
+                                Grid.ColumnSpan="2"
+                                IsVisible="True"
+                                MinimumHeightRequest="420"
+                                Stroke="{AppThemeBinding Light={StaticResource Gray200}, Dark={StaticResource Gray600}}"
+                                StrokeShape="RoundRectangle 22"
+                                Padding="24"
+                                BackgroundColor="{AppThemeBinding Light=#F8FAFC, Dark=#111827}">
+                            <VerticalStackLayout Spacing="18">
+                                <Label Text="Activation Summary"
+                                       FontFamily="OpenSansSemibold"
+                                       FontSize="24"
+                                       TextColor="{AppThemeBinding Light={StaticResource Gray950}, Dark={StaticResource White}}" />
+
+                                <ScrollView>
+                                    <Label x:Name="ActivationDetailsLabel"
+                                           FontSize="18"
+                                           LineHeight="1.4"
+                                           LineBreakMode="CharacterWrap"
+                                           TextColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray200}}" />
+                                </ScrollView>
+                            </VerticalStackLayout>
+                        </Border>
+                    </Grid>
+                </VerticalStackLayout>
+            </Border>
+        </Grid>
+    </ScrollView>
+
+</ContentPage>
