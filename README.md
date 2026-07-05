@@ -7,6 +7,7 @@ The sample signs a user in with Entra ID through MSAL and uses the returned Open
 ## What This Sample Demonstrates
 
 - Entra ID login in a native .NET MAUI application
+- Entra ID client provisioning for EUP web login
 - Token claim mapping for Zentitle2 Account-Based Licensing
 - Seat activation with `openIdToken` credentials
 - A repeatable Entra ID setup flow using the included script
@@ -74,16 +75,23 @@ During the script, you will be prompted for:
 
 - your Entra tenant ID
 - the native application name to create or update
+- the EUP web application name to create or update
+- the EUP URL, for example `https://oriondev.eup.nalpeiron-dev.com:8443`
 - the Zentitle2 `ProductId`
 - the Zentitle2 entitlement group ID, used as the Entra app role value
 - whether to create and assign a security group to that app role
+
+The script derives the EUP callback URL by appending `/sso` to the EUP URL. For example, `https://oriondev.eup.nalpeiron-dev.com:8443` becomes `https://oriondev.eup.nalpeiron-dev.com:8443/sso`.
 
 ### What the Script Provisions in Entra ID
 
 The script:
 
 - creates or updates a public-client app registration
+- creates or updates a web-client app registration for EUP web login
 - configures MSAL redirect URIs for Android, iOS, and desktop/Mac Catalyst
+- configures the EUP `/sso` callback URL on the web-client app registration
+- exposes the EUP web-client app as an API with a delegated `user_impersonation` scope
 - adds the delegated Microsoft Graph `User.Read` permission
 - configures the Entra `email` optional claim for ID tokens and access tokens
 - creates or reuses an app role whose value is the Zentitle2 entitlement group ID
@@ -91,6 +99,14 @@ The script:
 - optionally creates a security group and assigns that group to the app role
 - updates `appsettings.Development.json`
 - updates the Android MSAL redirect scheme in `Platforms/Android/MsalActivity.cs`
+
+The final setup summary includes the EUP web app client ID and access token scope. Configure EUP with that Entra client ID, the printed v2.0 authority URL, and scope:
+
+```text
+openid profile email api://<EUP web app client ID>/user_impersonation
+```
+
+Without the `api://.../user_impersonation` scope, Entra can issue a Microsoft Graph access token instead of an EUP-audience access token.
 
 ## Step 3: Complete Local App Configuration
 

@@ -36,6 +36,30 @@ prompt() {
 	fi
 }
 
+prompt_required() {
+	local label="$1"
+	local value
+
+	while true; do
+		value="$(prompt "${label}")"
+		if [[ -n "${value}" ]]; then
+			echo "${value}"
+			return 0
+		fi
+
+		echo "A value is required." >&2
+	done
+}
+
+normalize_base_url() {
+	local value="$1"
+	value="${value%/}"
+	if [[ "${value}" == */sso ]]; then
+		value="${value%/sso}"
+	fi
+	echo "${value}"
+}
+
 new_uuid() {
 	if command -v uuidgen >/dev/null 2>&1; then
 		uuidgen | tr '[:upper:]' '[:lower:]'
@@ -88,7 +112,9 @@ This script provisions the Microsoft Entra ID pieces required by the MAUI app an
 
 It creates or updates:
   - a public-client app registration for native sign-in
+  - a web-client app registration for EUP web login
   - MSAL redirect URIs for Android, iOS, and desktop/Mac Catalyst
+  - the EUP /sso callback URL on the web-client app registration
   - a delegated Microsoft Graph User.Read permission
   - the email optional claim in ID tokens and access tokens
   - an app role whose value is the Zentitle2 entitlement group ID
@@ -121,6 +147,9 @@ EOF
 fi
 
 APPLICATION_NAME="$(prompt "Native application name" "IdpDemo Entra Native")"
+WEB_APPLICATION_NAME="$(prompt "EUP web application name" "IdpDemo Entra EUP Web")"
+EUP_URL="$(normalize_base_url "$(prompt_required "EUP URL (for example https://oriondev.eup.nalpeiron-dev.com:8443)")")"
+EUP_CALLBACK_URL="${EUP_URL}/sso"
 PRODUCT_ID="$(
 	if [[ -n "${CURRENT_PRODUCT_ID}" ]]; then
 		prompt "Zentitle2 product ID" "${CURRENT_PRODUCT_ID}"
@@ -305,6 +334,155 @@ PATCH_PAYLOAD="$(
 
 az_rest PATCH "https://graph.microsoft.com/v1.0/applications/${APPLICATION_OBJECT_ID}" "${PATCH_PAYLOAD}" >/dev/null
 
+echo "Ensuring EUP web application client exists..."
+
+EXISTING_WEB_APP="$(
+	az ad app list --display-name "${WEB_APPLICATION_NAME}" -o json \
+	| jq -c --arg name "${WEB_APPLICATION_NAME}" '[.[] | select(.displayName == $name)] | first // empty'
+)"
+
+WEB_CREATE_PAYLOAD="$(
+	jq -n \
+		--arg display_name "${WEB_APPLICATION_NAME}" \
+		--arg redirect_uri "${EUP_CALLBACK_URL}" \
+		'{
+			displayName: $display_name,
+			signInAudience: "AzureADMyOrg",
+				web: {
+					redirectUris: [$redirect_uri],
+					implicitGrantSettings: {
+						enableAccessTokenIssuance: true,
+						enableIdTokenIssuance: true
+					}
+				},
+			optionalClaims: {
+				idToken: [
+					{
+						name: "email",
+						source: null,
+						essential: false,
+						additionalProperties: []
+					}
+				],
+				accessToken: [
+					{
+						name: "email",
+						source: null,
+						essential: false,
+						additionalProperties: []
+					}
+				]
+			}
+		}'
+)"
+
+if [[ -z "${EXISTING_WEB_APP}" || "${EXISTING_WEB_APP}" == "null" ]]; then
+	WEB_APP_JSON="$(az_rest POST "https://graph.microsoft.com/v1.0/applications" "${WEB_CREATE_PAYLOAD}")"
+else
+	WEB_APP_JSON="${EXISTING_WEB_APP}"
+fi
+
+WEB_APPLICATION_OBJECT_ID="$(jq -r '.id' <<<"${WEB_APP_JSON}")"
+WEB_CLIENT_ID="$(jq -r '.appId' <<<"${WEB_APP_JSON}")"
+WEB_APPLICATION_ID_URI="api://${WEB_CLIENT_ID}"
+WEB_ACCESS_SCOPE_VALUE="user_impersonation"
+WEB_ACCESS_SCOPE="${WEB_APPLICATION_ID_URI}/${WEB_ACCESS_SCOPE_VALUE}"
+
+WEB_APP_JSON="$(az_rest GET "https://graph.microsoft.com/v1.0/applications/${WEB_APPLICATION_OBJECT_ID}")"
+EXISTING_WEB_REDIRECTS="$(jq -c '.web.redirectUris // []' <<<"${WEB_APP_JSON}")"
+WEB_REDIRECTS="${EXISTING_WEB_REDIRECTS}"
+
+if ! json_array_contains "${WEB_REDIRECTS}" "${EUP_CALLBACK_URL}"; then
+	WEB_REDIRECTS="$(jq -c --arg value "${EUP_CALLBACK_URL}" '. + [$value]' <<<"${WEB_REDIRECTS}")"
+fi
+
+EXISTING_WEB_IDENTIFIER_URIS="$(jq -c '.identifierUris // []' <<<"${WEB_APP_JSON}")"
+WEB_IDENTIFIER_URIS="${EXISTING_WEB_IDENTIFIER_URIS}"
+
+if ! json_array_contains "${WEB_IDENTIFIER_URIS}" "${WEB_APPLICATION_ID_URI}"; then
+	WEB_IDENTIFIER_URIS="$(jq -c --arg value "${WEB_APPLICATION_ID_URI}" '. + [$value]' <<<"${WEB_IDENTIFIER_URIS}")"
+fi
+
+EXISTING_WEB_OPTIONAL_CLAIMS="$(jq -c '.optionalClaims // {}' <<<"${WEB_APP_JSON}")"
+WEB_OPTIONAL_CLAIMS="$(
+	jq -c '
+		def email_claim:
+			{
+				name: "email",
+				source: null,
+				essential: false,
+				additionalProperties: []
+			};
+		def ensure_email_claim:
+			if any(.[]?; .name == "email") then
+				.
+			else
+				. + [email_claim]
+			end;
+
+		.idToken = ((.idToken // []) | ensure_email_claim) |
+		.accessToken = ((.accessToken // []) | ensure_email_claim)
+	' <<<"${EXISTING_WEB_OPTIONAL_CLAIMS}"
+)"
+
+EXISTING_WEB_API="$(jq -c '.api // {}' <<<"${WEB_APP_JSON}")"
+WEB_API="$(
+	jq -c \
+		--arg scope_id "$(new_uuid)" \
+		--arg scope_value "${WEB_ACCESS_SCOPE_VALUE}" \
+		'
+		def eup_scope($id; $value):
+			{
+				adminConsentDescription: "Allow EUP to sign in users with this application.",
+				adminConsentDisplayName: "Sign in to EUP",
+				id: $id,
+				isEnabled: true,
+				type: "User",
+				userConsentDescription: "Allow EUP to sign you in with this application.",
+				userConsentDisplayName: "Sign in to EUP",
+				value: $value
+			};
+
+		.requestedAccessTokenVersion = 2 |
+		.oauth2PermissionScopes = (
+			if any(.oauth2PermissionScopes[]?; .value == $scope_value) then
+				[
+					.oauth2PermissionScopes[] |
+					if .value == $scope_value then
+						eup_scope(.id; $scope_value)
+					else
+						.
+					end
+				]
+			else
+				((.oauth2PermissionScopes // []) + [eup_scope($scope_id; $scope_value)])
+			end
+		)
+		' <<<"${EXISTING_WEB_API}"
+)"
+
+WEB_PATCH_PAYLOAD="$(
+	jq -n \
+		--argjson redirects "${WEB_REDIRECTS}" \
+		--argjson identifier_uris "${WEB_IDENTIFIER_URIS}" \
+		--argjson optional_claims "${WEB_OPTIONAL_CLAIMS}" \
+		--argjson api "${WEB_API}" \
+		'{
+			identifierUris: $identifier_uris,
+				web: {
+					redirectUris: $redirects,
+					implicitGrantSettings: {
+						enableAccessTokenIssuance: true,
+						enableIdTokenIssuance: true
+					}
+				},
+			optionalClaims: $optional_claims,
+			api: $api
+		}'
+)"
+
+az_rest PATCH "https://graph.microsoft.com/v1.0/applications/${WEB_APPLICATION_OBJECT_ID}" "${WEB_PATCH_PAYLOAD}" >/dev/null
+
 echo "Ensuring enterprise application service principal exists..."
 
 SERVICE_PRINCIPAL="$(
@@ -387,8 +565,13 @@ cat <<EOF
 Entra ID provisioning complete.
 
 Created or updated:
-  App registration: ${APPLICATION_NAME}
-  Client ID: ${CLIENT_ID}
+  Native app registration: ${APPLICATION_NAME}
+  Native app client ID: ${CLIENT_ID}
+  EUP web app registration: ${WEB_APPLICATION_NAME}
+  EUP web app client ID: ${WEB_CLIENT_ID}
+  EUP callback URL: ${EUP_CALLBACK_URL}
+  EUP access token audience: ${WEB_APPLICATION_ID_URI}
+  EUP access token scope: ${WEB_ACCESS_SCOPE}
   Enterprise application object ID: ${SERVICE_PRINCIPAL_ID}
   App role value: ${ENTITLEMENT_GROUP_ID}
   Optional claims: email in ID token and access token
@@ -407,5 +590,7 @@ Zentitle2 values to enter in Administration > Configuration > Account-Based Lice
 Next steps:
   1. Assign users or groups to app role "${APP_ROLE_DISPLAY_NAME}" in the Enterprise Application if you did not let this script create a group assignment.
   2. Add each user's Entra object ID (oid claim) as the OpenID Token authentication claim value in Zentitle2.
-  3. Rebuild and run the MAUI app so the packaged appsettings.Development.json and Android redirect scheme are refreshed.
+  3. Configure EUP with Entra client ID ${WEB_CLIENT_ID}.
+  4. Configure EUP to use authority ${IDP_URL} and scope "openid profile email ${WEB_ACCESS_SCOPE}".
+  5. Rebuild and run the MAUI app so the packaged appsettings.Development.json and Android redirect scheme are refreshed.
 EOF
